@@ -22,16 +22,22 @@ class DataLoader:
             try:
                 credentials = Credentials.from_service_account_info(
                     st.secrets["gcp_service_account"], scopes=SCOPES)
-            except:
+                print("Using Streamlit secrets for authentication")
+            except Exception as e:
+                print(f"Failed to use Streamlit secrets: {e}")
                 # 로컬에서는 파일 사용
                 credentials = Credentials.from_service_account_file(
                     SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+                print("Using local credentials file for authentication")
             
             gc = gspread.authorize(credentials)
             sheet = gc.open_by_key(SHEET_ID)
+            print(f"Successfully connected to Google Sheets: {SHEET_ID}")
             return sheet
         except Exception as e:
-            st.error(f"Google Sheets 연결 실패: {e}")
+            error_msg = f"Google Sheets 연결 실패: {e}"
+            print(error_msg)
+            st.error(error_msg)
             return None
     
     def get_student_essays(self, username):

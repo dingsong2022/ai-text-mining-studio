@@ -20,6 +20,11 @@ def check_login(username, password):
             data_loader = DataLoader()
             st.session_state.data_loader = data_loader
         
+        # Google Sheets 연결 확인
+        if not data_loader.sheet:
+            st.error("Google Sheets 연결에 실패했습니다. Streamlit Secrets 설정을 확인해주세요.")
+            return False
+        
         # 사용자정보 시트에서 확인
         users_sheet = data_loader.sheet.worksheet("사용자정보")
         all_values = users_sheet.get_all_values()
