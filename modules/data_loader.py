@@ -3,6 +3,7 @@ import gspread
 import pandas as pd
 from google.oauth2.service_account import Credentials
 import json
+from modules.redis_cache import RedisCache
 
 # Google Sheets 설정
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets',
@@ -13,6 +14,7 @@ SHEET_ID = '1_HkNcnWX_31GhJwDcT3a2D41BJvbF9Njmwi5d5T8pWQ'
 class DataLoader:
     def __init__(self):
         self.sheet = self._get_google_sheets()
+        self.cache = RedisCache()  # Redis 캐시 초기화
     
     @st.cache_resource
     def _get_google_sheets(_self):
@@ -41,16 +43,26 @@ class DataLoader:
             return None
     
     def get_student_essays(self, username):
-        """특정 학생의 모든 에세이 데이터 가져오기"""
+        """특정 학생의 모든 에세이 데이터 가져오기 (Redis 캐싱)"""
         try:
+            # 1. Redis 캐시에서 먼저 확인
+            cache_key = f"essays:{username}"
+            cached_data = self.cache.get(cache_key)
+
+            if cached_data is not None:
+                print(f"Cache HIT: {cache_key}")
+                return pd.DataFrame(cached_data)
+
+            print(f"Cache MISS: {cache_key} - Fetching from Google Sheets")
+
             if not self.sheet:
                 st.error("Google Sheets 연결이 되지 않았습니다.")
                 return pd.DataFrame()
-            
-            # 논술데이터 시트에서 데이터 가져오기
+
+            # 2. Google Sheets에서 데이터 가져오기
             essays_sheet = self.sheet.worksheet("논술데이터")
             data = essays_sheet.get_all_records()
-            
+
             # 해당 학생의 데이터만 필터링
             student_data = []
             for row in data:
@@ -67,64 +79,78 @@ class DataLoader:
                         'feedback': row.get('피드백', '')  # 피드백
                     }
                     student_data.append(converted_row)
-            
+
             if not student_data:
                 st.warning(f"{username}의 에세이 데이터가 없습니다.")
                 return pd.DataFrame()
-            
+
             df = pd.DataFrame(student_data)
-            
+
             # 데이터 타입 변환
             if 'total_score' in df.columns:
                 # 점수에서 숫자만 추출
-                df['total_score'] = df['total_score'].astype(str).str.extract('(\d+)').astype(float)
-            
+                df['total_score'] = df['total_score'].astype(str).str.extract(r'(\d+)').astype(float)
+
             # 날짜 컬럼 변환
             if 'created_at' in df.columns:
                 df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
-            
+
+            # 3. Redis 캐시에 저장 (5분)
+            self.cache.set(cache_key, student_data, ttl=300)
+
             return df
-            
+
         except Exception as e:
             st.error(f"데이터 로딩 오류: {e}")
             return pd.DataFrame()
     
-    def get_combined_essay_text(self, username):
-        """학생의 모든 에세이를 하나의 텍스트로 합치기"""
+    @st.cache_data(ttl=300, show_spinner=False)
+    def get_combined_essay_text(_self, username):
+        """학생의 모든 에세이를 하나의 텍스트로 합치기 (5분 캐싱)"""
         try:
-            essay_data = self.get_student_essays(username)
-            
+            essay_data = _self.get_student_essays(username)
+
             if essay_data.empty:
                 return ""
-            
+
             # 모든 에세이 텍스트 합치기
             all_texts = []
             for _, row in essay_data.iterrows():
                 essay_text = row.get('essay_text', '')
                 if essay_text and not pd.isna(essay_text):
                     all_texts.append(str(essay_text))
-            
+
             return " ".join(all_texts)
-            
+
         except Exception as e:
             st.error(f"텍스트 합치기 오류: {e}")
             return ""
     
     def get_all_students_list(self):
-        """전체 학생 목록 가져오기"""
+        """전체 학생 목록 가져오기 (Redis 캐싱)"""
         try:
+            # 1. Redis 캐시에서 먼저 확인
+            cache_key = "students:list"
+            cached_data = self.cache.get(cache_key)
+
+            if cached_data is not None:
+                print(f"Cache HIT: {cache_key}")
+                return cached_data
+
+            print(f"Cache MISS: {cache_key} - Fetching from Google Sheets")
+
             if not self.sheet:
                 return []
-            
-            # 사용자정보 시트에서 학생 목록 가져오기
+
+            # 2. Google Sheets에서 학생 목록 가져오기
             users_sheet = self.sheet.worksheet("사용자정보")
-            
+
             # 모든 데이터 가져오기
             all_values = users_sheet.get_all_values()
-            
+
             if len(all_values) < 2:
                 return []
-            
+
             # 학생 ID만 추출 (첫 번째 컬럼이 아이디)
             students = []
             for row in all_values[1:]:  # 헤더 제외
@@ -132,9 +158,14 @@ class DataLoader:
                     username = row[0].strip()  # 첫 번째 컬럼 (아이디)
                     if username and username != 'teachertest1':
                         students.append(username)
-            
-            return sorted(students)
-            
+
+            students = sorted(students)
+
+            # 3. Redis 캐시에 저장 (10분)
+            self.cache.set(cache_key, students, ttl=600)
+
+            return students
+
         except Exception as e:
             st.error(f"학생 목록 로딩 오류: {e}")
             return []

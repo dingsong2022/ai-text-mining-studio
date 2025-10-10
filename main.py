@@ -13,31 +13,49 @@ st.set_page_config(
 
 # 로그인 함수
 def check_login(username, password):
-    """사용자 인증"""
+    """사용자 인증 (Redis 캐싱)"""
     try:
         data_loader = st.session_state.get('data_loader')
         if not data_loader:
             data_loader = DataLoader()
             st.session_state.data_loader = data_loader
-        
-        # Google Sheets 연결 확인
-        if not data_loader.sheet:
-            st.error("Google Sheets 연결에 실패했습니다. Streamlit Secrets 설정을 확인해주세요.")
-            return False
-        
-        # 사용자정보 시트에서 확인
-        users_sheet = data_loader.sheet.worksheet("사용자정보")
-        all_values = users_sheet.get_all_values()
-        
-        for row in all_values[1:]:  # 헤더 제외
-            if len(row) >= 2:
-                stored_username = row[0].strip()
-                stored_password = row[1].strip()
-                
-                if stored_username == username and stored_password == password:
-                    return True
+
+        # 1. Redis 캐시에서 사용자 정보 확인
+        cache_key = "users:credentials"
+        credentials = data_loader.cache.get(cache_key)
+
+        if credentials is None:
+            print(f"Cache MISS: {cache_key} - Fetching from Google Sheets")
+
+            # Google Sheets 연결 확인
+            if not data_loader.sheet:
+                st.error("Google Sheets 연결에 실패했습니다. Streamlit Secrets 설정을 확인해주세요.")
+                return False
+
+            # 2. Google Sheets에서 사용자 정보 가져오기
+            users_sheet = data_loader.sheet.worksheet("사용자정보")
+            all_values = users_sheet.get_all_values()
+
+            # 사용자명:비밀번호 딕셔너리로 변환
+            credentials = {}
+            for row in all_values[1:]:  # 헤더 제외
+                if len(row) >= 2:
+                    stored_username = row[0].strip()
+                    stored_password = row[1].strip()
+                    if stored_username and stored_password:
+                        credentials[stored_username] = stored_password
+
+            # 3. Redis 캐시에 저장 (10분)
+            data_loader.cache.set(cache_key, credentials, ttl=600)
+        else:
+            print(f"Cache HIT: {cache_key}")
+
+        # 캐시된 인증 정보에서 확인
+        if username in credentials and credentials[username] == password:
+            return True
+
         return False
-        
+
     except Exception as e:
         st.error(f"로그인 확인 오류: {e}")
         return False

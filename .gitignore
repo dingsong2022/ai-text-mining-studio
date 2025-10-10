@@ -2,6 +2,7 @@
 credentials.json
 *.json
 !requirements.txt
+.env
 
 # Python Cache Files
 __pycache__/
