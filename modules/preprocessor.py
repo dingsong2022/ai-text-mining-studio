@@ -1777,8 +1777,13 @@ class TextPreprocessor:
 
     def _vocabulary_level_analysis(self, text):
         """2단계: 어휘 수준 분석 (Word Embedding 시뮬레이션)"""
-        
-        words = text.lower().split()
+
+        # 구두점 제거하고 단어 추출
+        import string
+        import re
+        # 구두점 제거
+        text_cleaned = re.sub(r'[' + string.punctuation + ']', ' ', text.lower())
+        words = text_cleaned.split()
         
         # 고급 어휘 사전 (실제로는 Word2Vec/GloVe 사용)
         ADVANCED_VOCABULARY = {
