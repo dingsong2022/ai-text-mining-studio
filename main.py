@@ -1775,7 +1775,7 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                                             st.write(f"• **{pos}**: {', '.join(words_list)}")
                             
                             # 전체 텍스트 종합 분석
-                            if len(sentence_analyses) > 1:
+                            if len(sentence_analyses) >= 1:
                                 st.markdown("---")
                                 st.markdown("### 📊 전체 텍스트 종합 분석")
                                 
