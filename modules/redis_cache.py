@@ -16,11 +16,15 @@ class RedisCache:
         """Redis 서버에 연결"""
         try:
             # Streamlit Cloud에서는 secrets 사용
+            redis_url = None
             try:
-                redis_url = st.secrets.get("REDIS_URL")
+                redis_url = st.secrets["REDIS_URL"]
+                print(f"Using Redis URL from Streamlit secrets")
             except:
                 # 로컬에서는 환경 변수 사용
                 redis_url = os.getenv("REDIS_URL")
+                if redis_url:
+                    print(f"Using Redis URL from environment variable")
 
             if not redis_url:
                 print("Warning: REDIS_URL not found. Cache disabled.")
