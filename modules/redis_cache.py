@@ -3,6 +3,10 @@ import json
 import os
 import streamlit as st
 from typing import Any, Optional
+import logging
+
+# 로거 설정
+logger = logging.getLogger(__name__)
 
 class RedisCache:
     """Redis 캐시 관리 클래스"""
@@ -19,15 +23,19 @@ class RedisCache:
             redis_url = None
             try:
                 redis_url = st.secrets["REDIS_URL"]
-                print(f"Using Redis URL from Streamlit secrets")
-            except:
+                st.write("✅ Redis URL found in Streamlit secrets")
+                logger.info("Using Redis URL from Streamlit secrets")
+            except Exception as e:
                 # 로컬에서는 환경 변수 사용
                 redis_url = os.getenv("REDIS_URL")
                 if redis_url:
-                    print(f"Using Redis URL from environment variable")
+                    st.write("✅ Redis URL found in environment variable")
+                    logger.info("Using Redis URL from environment variable")
+                else:
+                    st.warning("⚠️ REDIS_URL not found. Cache disabled.")
+                    logger.warning("REDIS_URL not found")
 
             if not redis_url:
-                print("Warning: REDIS_URL not found. Cache disabled.")
                 return
 
             # Redis 연결
@@ -40,10 +48,12 @@ class RedisCache:
 
             # 연결 테스트
             self.client.ping()
-            print("Redis cache connected successfully!")
+            st.success("🎉 Redis cache connected successfully!")
+            logger.info("Redis cache connected successfully")
 
         except Exception as e:
-            print(f"Redis connection failed: {e}")
+            st.error(f"❌ Redis connection failed: {e}")
+            logger.error(f"Redis connection failed: {e}")
             self.client = None
 
     def get(self, key: str) -> Optional[Any]:
