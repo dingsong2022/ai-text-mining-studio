@@ -13,49 +13,26 @@ st.set_page_config(
 
 # 로그인 함수
 def check_login(username, password):
-    """사용자 인증 (Redis 캐싱)"""
+    """사용자 인증"""
     try:
         data_loader = st.session_state.get('data_loader')
         if not data_loader:
             data_loader = DataLoader()
             st.session_state.data_loader = data_loader
-
-        # 1. Redis 캐시에서 사용자 정보 확인
-        cache_key = "users:credentials"
-        credentials = data_loader.cache.get(cache_key)
-
-        if credentials is None:
-            print(f"Cache MISS: {cache_key} - Fetching from Google Sheets")
-
-            # Google Sheets 연결 확인
-            if not data_loader.sheet:
-                st.error("Google Sheets 연결에 실패했습니다. Streamlit Secrets 설정을 확인해주세요.")
-                return False
-
-            # 2. Google Sheets에서 사용자 정보 가져오기
-            users_sheet = data_loader.sheet.worksheet("사용자정보")
-            all_values = users_sheet.get_all_values()
-
-            # 사용자명:비밀번호 딕셔너리로 변환
-            credentials = {}
-            for row in all_values[1:]:  # 헤더 제외
-                if len(row) >= 2:
-                    stored_username = row[0].strip()
-                    stored_password = row[1].strip()
-                    if stored_username and stored_password:
-                        credentials[stored_username] = stored_password
-
-            # 3. Redis 캐시에 저장 (10분)
-            data_loader.cache.set(cache_key, credentials, ttl=600)
-        else:
-            print(f"Cache HIT: {cache_key}")
-
-        # 캐시된 인증 정보에서 확인
-        if username in credentials and credentials[username] == password:
-            return True
-
+        
+        # 사용자정보 시트에서 확인
+        users_sheet = data_loader.sheet.worksheet("사용자정보")
+        all_values = users_sheet.get_all_values()
+        
+        for row in all_values[1:]:  # 헤더 제외
+            if len(row) >= 2:
+                stored_username = row[0].strip()
+                stored_password = row[1].strip()
+                
+                if stored_username == username and stored_password == password:
+                    return True
         return False
-
+        
     except Exception as e:
         st.error(f"로그인 확인 오류: {e}")
         return False
@@ -64,7 +41,17 @@ def login_page():
     """로그인 페이지"""
     st.markdown('<h1 class="main-header">🔍 AI Text Mining Studio</h1>', unsafe_allow_html=True)
     st.markdown("**개인 맞춤형 영어 에세이 텍스트 마이닝 분석 플랫폼**")
-    
+
+    # Redis 상태 확인
+    if 'data_loader' not in st.session_state:
+        st.session_state.data_loader = DataLoader()
+
+    data_loader = st.session_state.data_loader
+    if data_loader.cache and data_loader.cache.is_connected():
+        st.success("🚀 Redis 캐시 활성화 - 빠른 성능")
+    else:
+        st.warning("⚠️ Redis 캐시 비활성화 - 제한된 동시 접속")
+
     st.markdown("---")
     
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -319,67 +306,6 @@ def show_text_mining_practice(essay_data, preprocessor, username, data_loader):
             steps['4단계_표제어추출'] = step4
             steps['4단계_단어수'] = len(step4.split()) if step4 else 0
             
-            # 5단계: 개체명 인식 (NER) - 원본 텍스트에서 수행
-            import re
-            try:
-                import spacy
-                # spacy 모델이 없을 경우를 대비한 간단한 패턴 기반 NER
-                ner_results = []
-                
-                # 인명 패턴 (대문자로 시작하는 연속된 단어)
-                person_pattern = r'\b[A-Z][a-z]+ [A-Z][a-z]+\b'
-                persons = re.findall(person_pattern, sample_text)
-                
-                # 장소명 패턴 (특정 키워드와 함께 나오는 대문자 단어)
-                place_keywords = r'\b(?:in|at|from|to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
-                places = re.findall(place_keywords, sample_text)
-                
-                # 기관명 패턴 (School, University, Company 등이 포함된 패턴)
-                org_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:School|University|College|Company|Corporation|Inc|Ltd))\b'
-                organizations = re.findall(org_pattern, sample_text)
-                
-                # 시간 패턴 (년도, 월, 요일 등)
-                time_pattern = r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December|\d{4}|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|today|yesterday|tomorrow)\b'
-                times = re.findall(time_pattern, sample_text, re.IGNORECASE)
-                
-                ner_results = {
-                    'PERSON': list(set(persons)),
-                    'PLACE': list(set(places)),
-                    'ORG': list(set(organizations)),
-                    'TIME': list(set(times))
-                }
-                
-            except ImportError:
-                # spacy가 없을 경우 간단한 패턴 기반 NER만 사용
-                import re
-                ner_results = {}
-                
-                # 인명 패턴 (대문자로 시작하는 연속된 단어)
-                person_pattern = r'\b[A-Z][a-z]+ [A-Z][a-z]+\b'
-                persons = re.findall(person_pattern, sample_text)
-                
-                # 장소명 패턴
-                place_keywords = r'\b(?:in|at|from|to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
-                places = re.findall(place_keywords, sample_text)
-                
-                # 기관명 패턴
-                org_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:School|University|College|Company|Corporation|Inc|Ltd))\b'
-                organizations = re.findall(org_pattern, sample_text)
-                
-                # 시간 패턴
-                time_pattern = r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December|\d{4}|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|today|yesterday|tomorrow)\b'
-                times = re.findall(time_pattern, sample_text, re.IGNORECASE)
-                
-                ner_results = {
-                    'PERSON': list(set(persons)),
-                    'PLACE': list(set(places)), 
-                    'ORG': list(set(organizations)),
-                    'TIME': list(set(times))
-                }
-            
-            steps['5단계_NER결과'] = ner_results
-            steps['5단계_개체수'] = sum(len(entities) for entities in ner_results.values())
-            
             preprocessing_steps = steps
             
             # 결과 표시
@@ -529,98 +455,11 @@ def show_text_mining_practice(essay_data, preprocessor, username, data_loader):
                 st.info("💡 **표제어 추출**: 'running' → 'run', 'studies' → 'study', 'better' → 'better' (사전 기반으로 더 정확함)")
                 st.success("✅ 표제어 추출이 어간 추출보다 더 정확한 결과를 제공합니다!")
             
-            # 5단계: 개체명 인식 (NER)
-            with st.expander("🏷️ 5단계: 개체명 인식 (NER) - 인물, 장소, 기관, 시간 추출", expanded=True):
-                st.markdown("**🎯 개체명 인식이란?**")
-                st.write("텍스트에서 특정 의미를 가진 고유명사들(인물명, 지명, 기관명, 시간 등)을 자동으로 찾아내는 기술입니다.")
-                
-                ner_results = preprocessing_steps['5단계_NER결과']
-                total_entities = preprocessing_steps['5단계_개체수']
-                
-                if total_entities > 0:
-                    st.success(f"✅ 총 **{total_entities}개**의 개체명이 발견되었습니다!")
-                    
-                    # 개체명 유형별 표시
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        st.metric("👤 인물명", len(ner_results['PERSON']))
-                        if ner_results['PERSON']:
-                            for person in ner_results['PERSON'][:5]:  # 최대 5개만 표시
-                                st.write(f"• {person}")
-                            if len(ner_results['PERSON']) > 5:
-                                st.write(f"... 외 {len(ner_results['PERSON']) - 5}개 더")
-                    
-                    with col2:
-                        st.metric("🗺️ 장소명", len(ner_results['PLACE']))
-                        if ner_results['PLACE']:
-                            for place in ner_results['PLACE'][:5]:  # 최대 5개만 표시
-                                st.write(f"• {place}")
-                            if len(ner_results['PLACE']) > 5:
-                                st.write(f"... 외 {len(ner_results['PLACE']) - 5}개 더")
-                    
-                    with col3:
-                        st.metric("🏢 기관명", len(ner_results['ORG']))
-                        if ner_results['ORG']:
-                            for org in ner_results['ORG'][:5]:  # 최대 5개만 표시
-                                st.write(f"• {org}")
-                            if len(ner_results['ORG']) > 5:
-                                st.write(f"... 외 {len(ner_results['ORG']) - 5}개 더")
-                    
-                    with col4:
-                        st.metric("⏰ 시간 표현", len(ner_results['TIME']))
-                        if ner_results['TIME']:
-                            for time in ner_results['TIME'][:5]:  # 최대 5개만 표시
-                                st.write(f"• {time}")
-                            if len(ner_results['TIME']) > 5:
-                                st.write(f"... 외 {len(ner_results['TIME']) - 5}개 더")
-                    
-                    # 분석 의미 해석
-                    st.markdown("**📊 분석 해석:**")
-                    interpretation = []
-                    
-                    if len(ner_results['PERSON']) > 0:
-                        interpretation.append(f"• **인물 언급**: {len(ner_results['PERSON'])}명의 인물을 구체적으로 언급하여 내용의 신뢰성을 높였습니다.")
-                    
-                    if len(ner_results['PLACE']) > 0:
-                        interpretation.append(f"• **장소 정보**: {len(ner_results['PLACE'])}곳의 구체적 장소를 제시하여 상황을 명확히 했습니다.")
-                    
-                    if len(ner_results['ORG']) > 0:
-                        interpretation.append(f"• **기관 정보**: {len(ner_results['ORG'])}개 기관을 언급하여 전문성과 객관성을 나타냈습니다.")
-                    
-                    if len(ner_results['TIME']) > 0:
-                        interpretation.append(f"• **시간 정보**: {len(ner_results['TIME'])}개의 시간 표현으로 시간적 맥락을 제공했습니다.")
-                    
-                    if interpretation:
-                        for interp in interpretation:
-                            st.write(interp)
-                    
-                    # 구체성 점수 계산
-                    specificity_score = min(100, total_entities * 10)  # 개체명 개수 × 10점, 최대 100점
-                    
-                    if specificity_score >= 70:
-                        st.success(f"🌟 **구체성 점수: {specificity_score}점** - 매우 구체적이고 풍부한 정보를 담고 있습니다!")
-                    elif specificity_score >= 40:
-                        st.info(f"📈 **구체성 점수: {specificity_score}점** - 적절한 수준의 구체적 정보가 있습니다.")
-                    else:
-                        st.warning(f"💡 **구체성 점수: {specificity_score}점** - 더 구체적인 인물, 장소, 기관명을 언급하면 글의 설득력이 높아집니다.")
-                
-                else:
-                    st.info("🔍 이 텍스트에서는 명확한 개체명이 발견되지 않았습니다.")
-                    st.write("💡 **개선 제안**: 구체적인 인물명, 장소명, 기관명을 언급하면 글의 신뢰성과 설득력이 높아집니다.")
-                
-                st.info("""
-                💡 **개체명 인식 기술:**
-                - **패턴 기반**: 정규표현식으로 특정 패턴(대문자 연속, 키워드 조합 등)을 탐지
-                - **기계학습**: 대량의 데이터로 학습된 모델이 문맥을 고려해 개체명 분류
-                - **실제 활용**: Google 검색, 뉴스 분류, 문서 요약, 정보 추출 등에서 핵심 기술
-                """)
-            
             # 요약 통계
             st.markdown("---")
             st.subheader("📊 전처리 요약 통계")
             
-            col1, col2, col3, col4, col5 = st.columns(5)
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
                 st.metric(
@@ -654,13 +493,6 @@ def show_text_mining_practice(essay_data, preprocessor, username, data_loader):
                     f"{preprocessing_steps['4단계_단어수']}개",
                     f"{diff_4:+d}개" if diff_4 != 0 else "변화없음",
                     help="최종 전처리 완료 (불용어 제거 후 기준)"
-                )
-            
-            with col5:
-                st.metric(
-                    "🏷️ 개체명", 
-                    f"{preprocessing_steps['5단계_개체수']}개",
-                    help="인물, 장소, 기관, 시간 등 고유명사"
                 )
             
             # 세션에 최종 결과 저장
@@ -785,6 +617,7 @@ def show_text_mining_practice(essay_data, preprocessor, username, data_loader):
                 # 전체 실습 완료
                 st.markdown("---")
                 st.success("🎉 모든 텍스트 마이닝 실습이 완료되었습니다!")
+                st.balloons()
                 
             except ImportError:
                 st.error("워드클라우드 라이브러리를 설치해주세요: pip install wordcloud")
@@ -827,10 +660,10 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
     
     # 1. 감성 분석 탭
     with analysis_tabs[0]:
-        st.subheader("😊 감성 분석 4단계 원리 체험")
-        st.markdown("감성 분석의 4가지 접근법을 직접 체험하며 텍스트 마이닝의 원리를 이해해보세요.")
+        st.subheader("😊 감성 분석 3단계 원리 체험")
+        st.markdown("감성 분석의 3가지 접근법을 직접 체험하며 텍스트 마이닝의 원리를 이해해보세요.")
         
-        if st.button("😊 4단계 감성 분석 원리 체험 시작", key="educational_sentiment"):
+        if st.button("😊 3단계 감성 분석 원리 체험 시작", key="educational_sentiment"):
             with st.spinner("감성 분석 원리를 단계별로 분석하는 중..."):
                 # 통합 텍스트로 교육적 감성 분석 실행
                 
@@ -843,9 +676,6 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                 # 3단계: VADER
                 sentiment_method3 = preprocessor.educational_sentiment_analysis_step3_vader(all_essays_text)
                 
-                # 4단계: 다중 감성 분석
-                sentiment_method4 = preprocessor.educational_sentiment_analysis_step4_emotions(all_essays_text)
-                
                 sentiment_comparison_result = {
                     'essay_info': {
                         'topic': f"{username}님의 모든 에세이 통합 텍스트",
@@ -855,8 +685,7 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                     },
                     'method1_lexicon': sentiment_method1,
                     'method2_tfidf': sentiment_method2,
-                    'method3_vader': sentiment_method3,
-                    'method4_emotions': sentiment_method4
+                    'method3_vader': sentiment_method3
                 }
                 
                 if sentiment_comparison_result:
@@ -1125,114 +954,9 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                     **❌ 한계:** 언어별 튜닝 필요, 도메인 특화 어려움
                     """)
                     
-                    st.markdown("---")
-                    
-                    # 4단계: 다중 감성 분석 (8가지 기본 감정)
-                    method4 = sentiment_comparison_result['method4_emotions']
-                    
-                    st.markdown("## 🌈 4단계: 다중 감성 분석 - 8가지 기본 감정 탐지")
-                    st.markdown("""
-                    **🔍 원리 설명:**
-                    - **8가지 기본 감정**을 각각 독립적으로 분석 (기쁨, 슬픔, 분노, 두려움, 놀람, 혐오, 신뢰, 기대)
-                    - **감정별 키워드 사전**을 활용한 다차원 감정 분석
-                    - **감정의 강도와 다양성**까지 정량적으로 측정
-                    """)
-                    
-                    if 'error' not in method4:
-                        # 주도적 감정과 전체 통계
-                        col1, col2, col3 = st.columns(3)
-                        
-                        with col1:
-                            dominant_emotion = method4.get('dominant_emotion', '중립')
-                            dominant_emoji = method4.get('dominant_emoji', '😐')
-                            st.success(f"**주도적 감정**: {dominant_emotion} {dominant_emoji}")
-                            
-                        with col2:
-                            emotion_intensity = method4.get('emotion_intensity', 0)
-                            st.metric("감정 강도", f"{emotion_intensity}%")
-                            
-                        with col3:
-                            emotion_variety = method4.get('emotion_variety', 0)
-                            st.metric("감정 다양성", f"{emotion_variety}가지")
-                        
-                        # 8가지 감정별 상세 결과
-                        st.markdown("### 🎭 감정별 상세 분석")
-                        emotion_details = method4.get('emotion_details', {})
-                        
-                        if emotion_details:
-                            # 2행 4열로 감정 표시
-                            row1_cols = st.columns(4)
-                            row2_cols = st.columns(4)
-                            
-                            emotions_list = list(emotion_details.items())
-                            
-                            # 첫 번째 행 (기쁨, 슬픔, 분노, 두려움)
-                            for i, col in enumerate(row1_cols):
-                                if i < len(emotions_list):
-                                    emotion_name, details = emotions_list[i]
-                                    with col:
-                                        score = details.get('score', 0)
-                                        emoji = details.get('emoji', '😐')
-                                        found_words = details.get('found_words', [])
-                                        
-                                        st.metric(f"{emoji} {emotion_name.split('(')[0].strip()}", f"{score}개")
-                                        if found_words:
-                                            st.write("**발견된 단어:**")
-                                            for word in found_words[:3]:  # 최대 3개만
-                                                st.write(f"• {word}")
-                                        else:
-                                            st.write("발견된 단어 없음")
-                            
-                            # 두 번째 행 (놀람, 혐오, 신뢰, 기대)
-                            for i, col in enumerate(row2_cols):
-                                emotion_index = i + 4
-                                if emotion_index < len(emotions_list):
-                                    emotion_name, details = emotions_list[emotion_index]
-                                    with col:
-                                        score = details.get('score', 0)
-                                        emoji = details.get('emoji', '😐')
-                                        found_words = details.get('found_words', [])
-                                        
-                                        st.metric(f"{emoji} {emotion_name.split('(')[0].strip()}", f"{score}개")
-                                        if found_words:
-                                            st.write("**발견된 단어:**")
-                                            for word in found_words[:3]:  # 최대 3개만
-                                                st.write(f"• {word}")
-                                        else:
-                                            st.write("발견된 단어 없음")
-                        
-                        # 문장별 감정 분석 결과
-                        sentence_emotions = method4.get('sentence_emotions', [])
-                        if sentence_emotions:
-                            st.markdown("### 📝 문장별 감정 분석")
-                            for i, sent_emotion in enumerate(sentence_emotions, 1):
-                                sentence = sent_emotion.get('sentence', '')
-                                emotion = sent_emotion.get('emotion', '중립')
-                                emoji = sent_emotion.get('emoji', '😐')
-                                score = sent_emotion.get('score', 0)
-                                
-                                st.write(f"**문장 {i}:** {sentence}")
-                                st.write(f"→ {emoji} **{emotion}** (감정 단어 {score}개)")
-                                st.write("")
-                        
-                        # 해석 및 조언
-                        interpretations = method4.get('interpretation', [])
-                        if interpretations:
-                            st.markdown("### 💡 감정 분석 해석")
-                            for interp in interpretations:
-                                st.write(f"• {interp}")
-                    
-                    else:
-                        st.error(f"다중 감성 분석 오류: {method4.get('error', '알 수 없는 오류')}")
-                    
-                    st.info("""
-                    **✅ 장점:** 세밀한 감정 분류, 감정 강도 측정, 다양성 분석 가능  
-                    **❌ 한계:** 키워드 기반 한계, 복합 감정 처리 어려움, 문맥 의존성
-                    """)
-                    
                     # 결과 비교 및 학습 정리
                     st.markdown("---")
-                    st.subheader("📊 4가지 감성 분석 방법 결과 비교")
+                    st.subheader("📊 3가지 감성 분석 방법 결과 비교")
                     
                     # 비교 테이블
                     comparison_data = []
@@ -1266,15 +990,6 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                             '정확도': '매우 높음'
                         })
                     
-                    if method4 and 'error' not in method4:
-                        comparison_data.append({
-                            '방법': '4. 다중 감성',
-                            '감성 결과': method4.get('dominant_emotion', 'Unknown'),
-                            '점수/신뢰도': f"{method4.get('emotion_intensity', 0)}%",
-                            '처리 속도': '보통',
-                            '정확도': '세밀함'
-                        })
-                    
                     if comparison_data:
                         df_sentiment_comparison = pd.DataFrame(comparison_data)
                         st.table(df_sentiment_comparison)
@@ -1290,7 +1005,6 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                         - 어휘 사전 기반의 단순 합산 방식
                         - TF-IDF를 활용한 가중치 기반 분석
                         - VADER의 문맥 고려 고급 규칙
-                        - 다중 감성으로 세밀한 감정 분류 체험
                         - 각 방법론의 장단점과 적용 분야
                         """)
                     
@@ -1300,7 +1014,6 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                         - 빠른 분석: 어휘 사전 기반
                         - 정확한 분류: TF-IDF + 머신러닝
                         - 소셜미디어: VADER
-                        - 세밀한 분석: 다중 감성
                         - 종합 분석: 여러 방법 조합 활용
                         """)
                     
@@ -1775,7 +1488,7 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                                             st.write(f"• **{pos}**: {', '.join(words_list)}")
                             
                             # 전체 텍스트 종합 분석
-                            if len(sentence_analyses) >= 1:
+                            if len(sentence_analyses) > 1:
                                 st.markdown("---")
                                 st.markdown("### 📊 전체 텍스트 종합 분석")
                                 
@@ -2113,6 +1826,7 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                 """)
             
             st.success("✅ 텍스트 마이닝 품사 분석 원리 체험이 완료되었습니다!")
+            st.balloons()
                 
         else:
             st.error("품사 분석 결과를 생성할 수 없습니다.")
@@ -2122,11 +1836,10 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
         st.subheader("🏆 글쓰기 수준 종합 진단 원리 체험")
         st.markdown("""
         **🎯 학습 목표:**
-        AI가 어떻게 글쓰기를 평가하는지 4단계로 체험해보세요!
+        AI가 어떻게 글쓰기를 평가하는지 3단계로 체험해보세요!
         - **1단계**: 통계적 텍스트 분석 - 문장 구조와 어휘 다양성 측정
-        - **2단계**: 어휘 수준 분석 - 고급 어휘 사용 평가
-        - **3단계**: 문법 오류 패턴 분석 - 정확성 및 문법 규칙 검사
-        - **4단계**: 문장 유사도 분석 - 논리적 연결성과 주제 일관성 평가
+        - **2단계**: 워드 임베딩 기술 - 문장 간 의미적 유사도 분석  
+        - **3단계**: 결과 해석 및 학습 계획 - 개인 맞춤형 피드백 생성
         """)
         
         st.info("💡 **체험 포인트**: 실제 AI 글쓰기 평가 시스템의 작동 원리를 단계별로 이해해보세요!")
@@ -2152,7 +1865,7 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                     
                     # 학생 통합 에세이 통계 분석 결과 표시
                     st.markdown("### 📊 학생 통합 에세이 통계 분석 결과")
-                    statistical_analysis = result.get('step1_stats', {})
+                    statistical_analysis = result.get('step1_statistical', {})
                     if statistical_analysis:
                         user_stats = statistical_analysis.get('user_statistics', {})
                         if user_stats:
@@ -2447,210 +2160,8 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                     
                     st.markdown("---")
                     
-                    # 3단계: 문법 오류 패턴 분석
-                    st.markdown("## 📝 3단계: 문법 오류 패턴 분석 - 정확성 평가")
-                    st.markdown("""
-                    **🔍 원리 설명:**
-                    - **주어-동사 수일치**: I am, He is, They are 등 기본 문법 규칙 검사
-                    - **시제 일관성**: 한 문장 내에서 과거/현재 시제가 섞이지 않는지 확인
-                    - **관사 사용**: a, an, the 등 관사 사용 패턴 분석
-                    - **전치사 활용**: in, on, at 등 전치사 사용의 적절성 검토
-                    """)
-                    
-                    # 학생 통합 에세이 문법 분석 결과
-                    st.markdown("### 📝 학생 통합 에세이 문법 분석 결과")
-                    
-                    if 'step3_grammar' not in result:
-                        with st.spinner("문법 오류 패턴 분석 중..."):
-                            result['step3_grammar'] = preprocessor.analyze_grammar_patterns(essay_data['combined_text'])
-                    
-                    grammar_analysis = result.get('step3_grammar', {})
-                    if grammar_analysis and 'error' not in grammar_analysis:
-                        col1, col2, col3 = st.columns(3)
-                        
-                        with col1:
-                            grammar_score = grammar_analysis.get('grammar_score', 100)
-                            st.metric("문법 정확도", f"{grammar_score:.1f}점")
-                        
-                        with col2:
-                            total_sentences = grammar_analysis.get('total_sentences', 0)
-                            sentences_with_issues = len(grammar_analysis.get('sentences_with_issues', []))
-                            issue_rate = (sentences_with_issues / total_sentences * 100) if total_sentences > 0 else 0
-                            st.metric("문제 문장 비율", f"{issue_rate:.1f}%")
-                        
-                        with col3:
-                            error_types = len(grammar_analysis.get('error_count_by_type', {}))
-                            st.metric("발견된 오류 유형", f"{error_types}개")
-                        
-                        # 주요 개선 영역
-                        improvement_areas = grammar_analysis.get('improvement_areas', [])
-                        if improvement_areas:
-                            st.markdown("### 🎯 주요 개선 영역")
-                            for i, area in enumerate(improvement_areas[:3], 1):
-                                st.write(f"{i}. {area}")
-                        
-                        # 오류 패턴별 상세 분석
-                        error_patterns = grammar_analysis.get('error_patterns', {})
-                        if error_patterns:
-                            st.markdown("### 📊 발견된 문법 패턴")
-                            
-                            for error_type, examples in error_patterns.items():
-                                error_type_korean = {
-                                    'subject_verb_agreement': '주어-동사 수일치',
-                                    'tense_consistency': '시제 일관성',
-                                    'article_usage': '관사 사용',
-                                    'preposition_usage': '전치사 사용',
-                                    'sentence_structure': '문장 구조',
-                                    'sentence_length': '문장 길이'
-                                }.get(error_type, error_type)
-                                
-                                with st.expander(f"📌 {error_type_korean} ({len(examples)}개 발견)", expanded=False):
-                                    for i, example in enumerate(examples[:3], 1):  # 최대 3개 예시만
-                                        st.write(f"**예시 {i}:**")
-                                        st.write(f"• 문장: \"{example['sentence']}\"")
-                                        st.write(f"• 문제점: {example['description']}")
-                                        if example['suggestion']:
-                                            st.write(f"• 개선 제안: {example['suggestion']}")
-                                        st.write("")
-                    else:
-                        error_msg = grammar_analysis.get('error', '문법 분석 결과가 없습니다.')
-                        st.warning(f"문법 분석 중 문제가 발생했습니다: {error_msg}")
-                    
-                    # 체험형 인터랙티브 요소 - 문법 검사
-                    st.markdown("**🎯 체험해보기: 텍스트 마이닝으로 문법 패턴 탐지하기**")
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("**📝 분석할 텍스트를 선택하세요:**")
-                        sample_texts = [
-                            "I love reading books. Books are amazing. I read books every day.",
-                            "She go to school. He are happy. They was playing games.",
-                            "The students study hard. A teacher explains well. An apple is red.",
-                            "Yesterday I walk to school. Today I will walked home."
-                        ]
-                        selected_text = st.selectbox("텍스트를 선택하세요:", sample_texts, key="pattern_text")
-                    
-                    with col2:
-                        st.markdown("**🔍 찾을 패턴을 선택하세요:**")
-                        pattern_options = [
-                            "주어-동사 수일치 오류",
-                            "시제 일관성 문제", 
-                            "관사 사용 패턴",
-                            "반복 단어 빈도"
-                        ]
-                        selected_pattern = st.selectbox("패턴을 선택하세요:", pattern_options, key="pattern_type")
-                    
-                    if st.button("🔬 패턴 분석 실행", key="analyze_pattern"):
-                        st.markdown("### 📊 텍스트 마이닝 분석 결과")
-                        
-                        import re
-                        from collections import Counter
-                        
-                        if selected_pattern == "주어-동사 수일치 오류":
-                            # 정규표현식으로 오류 패턴 탐지
-                            error_patterns = [
-                                (r'\bI are\b', 'I are → I am'),
-                                (r'\bHe are\b|\bShe are\b', 'He/She are → He/She is'),
-                                (r'\bThey is\b', 'They is → They are'),
-                                (r'\bWe was\b', 'We was → We were')
-                            ]
-                            
-                            found_errors = []
-                            for pattern, correction in error_patterns:
-                                matches = re.findall(pattern, selected_text, re.IGNORECASE)
-                                if matches:
-                                    found_errors.extend([(match, correction) for match in matches])
-                            
-                            if found_errors:
-                                st.error("❌ 발견된 수일치 오류:")
-                                for i, (error, correction) in enumerate(found_errors, 1):
-                                    st.write(f"{i}. **{error}** → {correction}")
-                            else:
-                                st.success("✅ 주어-동사 수일치 오류가 발견되지 않았습니다!")
-                                
-                        elif selected_pattern == "시제 일관성 문제":
-                            # 시제 관련 단어 패턴 분석
-                            past_indicators = re.findall(r'\b(yesterday|ago|last|was|were|went|did)\b', selected_text.lower())
-                            present_indicators = re.findall(r'\b(today|now|is|are|do|does|go|walk)\b', selected_text.lower())
-                            future_indicators = re.findall(r'\b(tomorrow|will|going to)\b', selected_text.lower())
-                            
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("과거형 표현", len(past_indicators))
-                                if past_indicators:
-                                    st.write("발견된 단어:", ', '.join(past_indicators[:3]))
-                            with col2:
-                                st.metric("현재형 표현", len(present_indicators))
-                                if present_indicators:
-                                    st.write("발견된 단어:", ', '.join(present_indicators[:3]))
-                            with col3:
-                                st.metric("미래형 표현", len(future_indicators))
-                                if future_indicators:
-                                    st.write("발견된 단어:", ', '.join(future_indicators[:3]))
-                                    
-                            # 시제 일관성 분석
-                            if len([x for x in [past_indicators, present_indicators, future_indicators] if x]) > 1:
-                                st.warning("⚠️ 여러 시제가 혼재되어 있습니다. 문맥상 일관성을 확인해보세요.")
-                            else:
-                                st.success("✅ 시제 사용이 일관적입니다!")
-                                
-                        elif selected_pattern == "관사 사용 패턴":
-                            # 관사 패턴 분석
-                            articles = re.findall(r'\b(a|an|the)\b', selected_text.lower())
-                            article_count = Counter(articles)
-                            
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("'a' 사용", article_count.get('a', 0))
-                            with col2:
-                                st.metric("'an' 사용", article_count.get('an', 0))
-                            with col3:
-                                st.metric("'the' 사용", article_count.get('the', 0))
-                                
-                            # 관사 다음 단어 분석
-                            article_patterns = re.findall(r'\b(a|an|the)\s+(\w+)', selected_text.lower())
-                            if article_patterns:
-                                st.write("**관사 + 명사 패턴:**")
-                                for article, noun in article_patterns[:5]:
-                                    st.write(f"• {article} {noun}")
-                                    
-                        elif selected_pattern == "반복 단어 빈도":
-                            # 단어 빈도 분석
-                            words = re.findall(r'\b[a-zA-Z]+\b', selected_text.lower())
-                            word_count = Counter(words)
-                            most_common = word_count.most_common(5)
-                            
-                            st.write("**상위 5개 빈출 단어:**")
-                            for i, (word, count) in enumerate(most_common, 1):
-                                st.write(f"{i}. **{word}** ({count}회)")
-                                
-                            # 반복도 분석
-                            total_words = len(words)
-                            unique_words = len(set(words))
-                            repetition_rate = (total_words - unique_words) / total_words * 100 if total_words > 0 else 0
-                            
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("총 단어 수", total_words)
-                            with col2:
-                                st.metric("고유 단어 수", unique_words)
-                            with col3:
-                                st.metric("반복률", f"{repetition_rate:.1f}%")
-                    
-                    st.info("""
-                    💡 **이 체험의 텍스트 마이닝 방법:**
-                    - **정규표현식 패턴 매칭**: 특정 문법 오류 패턴을 자동으로 탐지
-                    - **단어 빈도 분석**: Counter를 사용한 단어 출현 빈도 계산
-                    - **패턴 분류**: 시제별, 관사별 표현을 체계적으로 분류 및 집계
-                    - **통계적 분석**: 어휘 다양성, 반복률 등 수치적 지표 산출
-                    
-                    **실제 텍스트 마이닝**: 대규모 코퍼스에서 언어 패턴을 발견하고 분류하는 자동화 기술
-                    """)
-                    
-                    st.markdown("---")
-                    
-                    # 4단계: 문장 유사도 분석 (기존 3단계에서 변경)
-                    st.markdown("## 🔗 4단계: 문장 유사도 분석 - 논리적 연결성 평가")
+                    # 3단계: 문장 유사도 분석
+                    st.markdown("## 🔗 3단계: 문장 유사도 분석 - 논리적 연결성 평가")
                     st.markdown("""
                     **🔍 원리 설명:**
                     - **문장 간 연결성**: 인접 문장들 간의 의미적 유사도 측정
@@ -2660,12 +2171,7 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                     
                     # 학생 통합 에세이 문장 유사도 분석 결과
                     st.markdown("### 🔗 학생 통합 에세이 문장 유사도 분석 결과")
-                    
-                    if 'step4_similarity' not in result:
-                        with st.spinner("문장 유사도 분석 중..."):
-                            result['step4_similarity'] = preprocessor.analyze_sentence_similarity(essay_data['combined_text'])
-                    
-                    similarity_analysis = result.get('step4_similarity', {})
+                    similarity_analysis = result.get('step3_similarity', {})
                     if similarity_analysis:
                         col1, col2, col3 = st.columns(3)
                         
@@ -2851,7 +2357,7 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                     st.markdown("---")
                     
                     # 종합 진단 결과
-                    comprehensive_results = result.get('step5_comprehensive', {})
+                    comprehensive_results = result.get('step4_comprehensive', {})
                     if comprehensive_results:
                         st.success("🎊 **종합 진단 완료!**")
                         
@@ -2911,190 +2417,67 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                             st.write("3. **논리적 연결**: 접속사를 활용한 문장 간 연결성 강화")
                             st.write("4. **독서 확대**: 다양한 장르의 영문 텍스트 읽기")
                     
-                    # 학생 주도형 학습 계획 생성 활동
-                    st.markdown("### 🎯 나만의 맞춤형 학습 계획 만들기")
-                    st.info("💡 분석 결과를 바탕으로 스스로 학습 계획을 세워보세요. 단계적 안내를 통해 나만의 목표를 찾아갈 수 있습니다.")
+                    # 체험형 요소 - 3단계
+                    st.markdown("**🎯 체험해보기: 나만의 학습 계획 세우기**")
                     
-                    # 1단계: 자기 반성 및 현재 상태 파악
-                    st.markdown("#### 📋 1단계: 내 글쓰기 현재 상태 분석하기")
+                    user_goal = st.selectbox("개선하고 싶은 글쓰기 영역을 선택하세요:", 
+                                           ["어휘 다양성", "문장 구조", "논리적 연결성", "문법 정확성", "창의적 표현"],
+                                           key="improvement_goal")
                     
-                    # 자기 반성 질문
-                    st.markdown("**🤔 스스로에게 물어보기:**")
-                    reflection_questions = [
-                        "내 글쓰기에서 가장 만족스러운 부분은 무엇인가요?",
-                        "어떤 부분에서 어려움을 느끼나요?",
-                        "글쓰기 실력을 향상시키고 싶은 이유는 무엇인가요?"
-                    ]
+                    user_level = st.select_slider("현재 영어 실력 수준:", 
+                                                options=["초급", "초중급", "중급", "중고급", "고급"],
+                                                value="중급",
+                                                key="current_level")
                     
-                    reflection_answers = {}
-                    for i, question in enumerate(reflection_questions):
-                        reflection_answers[f"q{i+1}"] = st.text_area(
-                            question, 
-                            placeholder="솔직하게 생각해보고 적어주세요...",
-                            key=f"reflection_{i+1}",
-                            height=80
-                        )
-                    
-                    # 2단계: 목표 설정
-                    st.markdown("#### 🎯 2단계: 구체적인 목표 정하기")
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.markdown("**우선순위 정하기:**")
-                        priority_areas = st.multiselect(
-                            "가장 집중하고 싶은 영역을 1-2개 선택하세요:",
-                            ["어휘 다양성 늘리기", "고급 어휘 사용하기", "문장 연결성 강화하기", 
-                             "문법 정확성 높이기", "창의적 표현 늘리기", "논리적 구조 만들기"],
-                            key="priority_areas"
-                        )
-                    
-                    with col2:
-                        st.markdown("**학습 스타일:**")
-                        learning_style = st.radio(
-                            "나에게 맞는 학습 방식은:",
-                            ["매일 조금씩 꾸준히", "주말에 집중적으로", "친구들과 함께", "혼자 차근차근"],
-                            key="learning_style"
-                        )
-                    
-                    # 목표 구체화
-                    target_period = st.selectbox(
-                        "언제까지 목표를 달성하고 싶나요?",
-                        ["2주 후", "4주 후", "8주 후", "학기말까지"],
-                        key="target_period"
-                    )
-                    
-                    success_measure = st.text_input(
-                        "목표 달성을 어떻게 확인할 건가요? (예: 에세이 점수 10점 향상, 새로운 단어 100개 사용)",
-                        key="success_measure",
-                        placeholder="구체적인 성공 기준을 적어보세요..."
-                    )
-                    
-                    # 3단계: 실행 계획 만들기
-                    if priority_areas and st.button("📝 나만의 학습 계획 완성하기", key="generate_personal_plan"):
-                        st.markdown("#### ✨ 3단계: 완성된 나만의 학습 계획")
+                    if st.button("🎯 맞춤형 학습 계획 생성", key="create_study_plan"):
+                        st.markdown("### 🎯 나만의 맞춤형 학습 계획")
                         
-                        # 버튼 클릭 시에만 풍선 표시 (세션별 고유 키 사용)
-                        balloon_key = f"learning_plan_balloons_{hash(str(priority_areas) + target_period + learning_style)}"
-                        if balloon_key not in st.session_state:
-                            st.balloons()
-                            st.session_state[balloon_key] = True
-                        
-                        # 학생이 선택한 내용을 바탕으로 개인화된 계획 제시
-                        st.success("🎊 축하합니다! 나만의 맞춤형 학습 계획이 완성되었습니다.")
-                        
-                        plan_container = st.container()
-                        with plan_container:
-                            st.markdown("---")
-                            st.markdown(f"### 📋 {st.session_state.get('user_name', '나')}의 글쓰기 향상 계획")
-                            
-                            col1, col2 = st.columns([2, 1])
-                            with col1:
-                                st.write(f"**🎯 주요 목표:** {', '.join(priority_areas)}")
-                                st.write(f"**⏰ 목표 달성 기한:** {target_period}")
-                                st.write(f"**📏 성공 기준:** {success_measure if success_measure else '꾸준한 연습과 자기 평가'}")
-                            with col2:
-                                st.write(f"**📚 학습 방식:** {learning_style}")
-                                st.write(f"**💪 집중 영역:** {len(priority_areas)}개 분야")
-                            
-                            # 구체적 실행 방법 제안 (선택한 영역별로)
-                            st.markdown("### 📝 주간별 실행 계획")
-                            
-                            # 중학교 1학년 수준 맞춤 학습 계획
-                            action_plans = {
-                                "어휘 다양성 늘리기": {
-                                    "주간 목표": "새로운 영어 단어 15개 확실히 외우고 사용해보기",
-                                    "일일 활동": "📚 **매일 10분 어휘 학습**\n• EBS 중학영어나 능률교육 사이트에서 중1 수준 영어동화 1개 읽기\n• 모르는 단어 3개를 공책에 크게 써서 뜻과 발음기호 적기\n• 새로 배운 단어로 '나는 ___이다' 형식의 쉬운 문장 만들기\n• 스마트폰 단어장 앱(예: 네이버사전)에 새 단어 저장하고 소리내어 읽기",
-                                    "체크포인트": "🎯 **주간 확인 활동**\n• 수요일: 이번 주 배운 단어 10개로 내 일상 소개하는 5문장 만들기\n• 금요일: 부모님/형제에게 새로 배운 단어 3개 영어로 설명해드리기\n• 일요일: 지난 주 단어 5개를 친구에게 퀴즈로 내고 맞추기 게임"
-                                },
-                                "고급 어휘 사용하기": {
-                                    "주간 목표": "simple한 단어를 좀 더 멋진 단어로 바꿔 쓰기",
-                                    "일일 활동": "✨ **매일 10분 단어 업그레이드**\n• 내가 쓴 영어 일기나 숙제에서 easy, good, bad 같은 쉬운 단어 찾기\n• 중학영어 교과서 뒷편 단어장에서 비슷한 뜻의 어려운 단어 찾기\n• 네이버 영어사전에서 예문 2개 읽고 따라 써보기\n• 바뀐 문장을 큰 소리로 읽으면서 어색한 곳 없는지 확인하기",
-                                    "체크포인트": "🎯 **주간 확인 활동**\n• 화요일: 'My hobby is...' 문장을 basic 단어와 advanced 단어로 각각 써보기\n• 금요일: 영어선생님께 내가 바꾼 문장이 자연스러운지 물어보기\n• 일요일: 이번 주 배운 멋진 단어 10개로 단어카드 만들어 벽에 붙이기"
-                                },
-                                "문장 연결성 강화하기": {
-                                    "주간 목표": "짧은 문장들을 자연스럽게 이어서 긴 문장 만들기",
-                                    "일일 활동": "🔗 **매일 10분 문장 연결 연습**\n• and, but, so, because 같은 연결어 하나씩 집중 학습\n• 중학교 영어교과서에서 연결어가 들어간 문장 5개 찾아 공책에 쓰기\n• 'I like pizza.' + 'Pizza is delicious.' → 'I like pizza because it is delicious.' 연습\n• 만든 문장을 녹음기로 녹음해서 들어보고 자연스러운지 확인",
-                                    "체크포인트": "🎯 **주간 확인 활동**\n• 목요일: 내 하루 일과를 5개 짧은 문장으로 쓴 다음 연결어로 3문장으로 줄이기\n• 토요일: 친구와 서로 쓴 문장 읽어주고 이상한 곳 찾아주기\n• 일요일: 좋아하는 연예인/운동선수 소개를 연결어 사용해서 100자로 쓰기"
-                                },
-                                "문법 정확성 높이기": {
-                                    "주간 목표": "be동사, 일반동사, 복수형 실수 없이 쓰기",
-                                    "일일 활동": "📝 **매일 10분 문법 점검**\n• EBS 중학영어 또는 '문법이 쉬워지는 영어' 앱에서 오늘의 문법 1개 학습\n• 학습한 문법으로 내 경험 문장 3개 만들기 (예: am/is/are 구분해서)\n• 어제 쓴 영어 문장에서 틀린 부분 빨간펜으로 고치기\n• 고친 부분을 노트에 '자주 틀리는 실수' 목록으로 만들기",
-                                    "체크포인트": "🎯 **주간 확인 활동**\n• 수요일: 내 소개 5문장 쓰고 be동사/일반동사 색깔펜으로 구분하기\n• 금요일: 짝꿍과 서로 쓴 문장 문법 검사해주고 틀린 곳 설명해주기\n• 일요일: 이번 주 가장 많이 틀린 문법 1개 골라서 예문 10개 만들기"
-                                },
-                                "창의적 표현 늘리기": {
-                                    "주간 목표": "딱딱한 문장 대신 재미있고 생동감 있는 표현 쓰기",
-                                    "일일 활동": "🎨 **매일 10분 표현 연습**\n• 디즈니 영화나 스튜디오 지브리 영화 명대사 1개 찾아 따라 쓰기\n• '비가 온다' 대신 'Rain is dancing'처럼 의인법으로 표현해보기\n• 감정을 색깔로 표현하기 (I'm feeling blue = 슬프다)\n• 내가 만든 창의적 문장을 가족에게 읽어주고 반응 보기",
-                                    "체크포인트": "🎯 **주간 확인 활동**\n• 화요일: '학교에 간다'를 3가지 다른 재미있는 방식으로 표현하기\n• 금요일: 좋아하는 음식을 의인법이나 비유법으로 소개하는 문장 쓰기\n• 일요일: 이번 주 날씨를 창의적 표현으로 일기 3줄 쓰기"
-                                },
-                                "논리적 구조 만들기": {
-                                    "주간 목표": "First, Next, Finally 순서로 차근차근 설명하는 글쓰기",
-                                    "일일 활동": "📊 **매일 10분 순서 정리 연습**\n• 라면 끓이는 방법, 학교 가는 길 등 일상적인 순서를 First, Next, Finally로 쓰기\n• 중학교 영어교과서 reading 부분에서 순서를 나타내는 표현 찾기\n• 내 의견을 I think → because → For example 순서로 설명하는 연습\n• 쓴 글을 소리내어 읽으며 순서가 논리적인지 확인하기",
-                                    "체크포인트": "🎯 **주간 확인 활동**\n• 수요일: 좋아하는 게임/취미 방법을 순서대로 영어 5문장으로 설명하기\n• 토요일: 친구에게 내 설명을 읽어주고 이해하기 쉬운지 물어보기\n• 일요일: 우리 학교 자랑거리를 First, Second, Third로 나눠서 소개하기"
-                                }
-                            }
-                            
-                            weeks_mapping = {"2주 후": 2, "4주 후": 4, "8주 후": 8, "학기말까지": 12}
-                            weeks = weeks_mapping.get(target_period, 4)
-                            
-                            for i, area in enumerate(priority_areas, 1):
-                                if area in action_plans:
-                                    plan = action_plans[area]
-                                    with st.expander(f"📌 영역 {i}: {area}", expanded=True):
-                                        col1, col2, col3 = st.columns(3)
-                                        with col1:
-                                            st.write(f"**주간 목표:**")
-                                            st.write(plan["주간 목표"])
-                                        with col2:
-                                            st.write(f"**일일 활동:**")
-                                            st.write(plan["일일 활동"])
-                                        with col3:
-                                            st.write(f"**체크포인트:**")
-                                            st.write(plan["체크포인트"])
-                            
-                            # 학습 스타일에 따른 맞춤 조언
-                            st.markdown("### 💡 나만의 학습 전략")
-                            style_advice = {
-                                "매일 조금씩 꾸준히": "⏰ 매일 15분씩 정해진 시간에 학습하고, 스마트폰 알림 설정하기",
-                                "주말에 집중적으로": "📅 토요일/일요일 2시간씩 집중 학습 시간 확보하고, 주중엔 복습만",
-                                "친구들과 함께": "👥 스터디 그룹 만들어 서로 글 검토해주고, 영어 대화 연습하기",
-                                "혼자 차근차근": "📚 조용한 환경에서 집중하고, 학습 일지 작성해 스스로 점검하기"
-                            }
-                            
-                            st.info(f"**{learning_style} 스타일 맞춤 조언:** {style_advice.get(learning_style, '자신만의 페이스로 꾸준히 학습하세요!')}")
-                            
-                            # 동기부여 및 점검 시스템
-                            st.markdown("### 🏆 성공을 위한 체크리스트")
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.markdown("**📈 주간 점검 질문:**")
-                                st.write("□ 이번 주 목표를 달성했나요?")
-                                st.write("□ 어떤 부분이 가장 어려웠나요?")
-                                st.write("□ 실제로 실력이 늘었다고 느끼나요?")
-                                st.write("□ 다음 주 계획을 조정할 부분이 있나요?")
-                            
-                            with col2:
-                                st.markdown("**🎯 동기부여 방법:**")
-                                st.write("• 작은 성취도 기록하고 축하하기")
-                                st.write("• 학습 전후 글쓰기 비교해보기")
-                                st.write("• 힘들 때 학습 목적 다시 떠올리기")
-                                st.write(f"• {target_period} 후 성취감 미리 상상하기")
-                            
-                            # 응급처치 계획
-                            st.markdown("### 🆘 학습이 어려울 때 대처법")
-                            emergency_tips = [
-                                "**동기가 떨어질 때**: 처음에 세운 목표와 이유를 다시 읽어보기",
-                                "**시간이 부족할 때**: 하루 5분이라도 영어 문장 하나 읽고 분석하기",
-                                "**너무 어려울 때**: 목표를 작은 단위로 나누어 달성 가능한 수준으로 조정하기",
-                                "**혼자 하기 힘들 때**: 선생님께 조언 구하거나 온라인 학습 커뮤니티 활용하기"
+                        # 선택한 목표에 따른 구체적인 계획 제시
+                        plans = {
+                            "어휘 다양성": [
+                                "매일 영어 뉴스 기사 3개씩 읽으며 새로운 단어 5개 학습",
+                                "동의어 사전 활용하여 기본 단어를 고급 단어로 대체 연습",
+                                "주제별 전문 어휘 리스트 작성 및 암기"
+                            ],
+                            "문장 구조": [
+                                "복합문(compound sentences) 만들기 연습",
+                                "관계절을 활용한 복문(complex sentences) 연습", 
+                                "다양한 문장 시작 방식으로 글쓰기 연습"
+                            ],
+                            "논리적 연결성": [
+                                "접속사(however, therefore, furthermore) 활용 연습",
+                                "단락 간 연결어구 사용법 학습",
+                                "논증 구조(서론-본론-결론) 체계적 구성 연습"
+                            ],
+                            "문법 정확성": [
+                                "시제 일치 규칙 복습 및 연습 문제 풀이",
+                                "수일치, 관사 사용법 집중 학습",
+                                "영작문 후 스스로 문법 오류 찾기 훈련"
+                            ],
+                            "창의적 표현": [
+                                "은유와 비유 표현 학습 및 활용",
+                                "감정과 느낌을 표현하는 다양한 방법 연습",
+                                "창의적 글쓰기 주제로 자유 작문 연습"
                             ]
-                            
-                            for tip in emergency_tips:
-                                st.write(f"• {tip}")
-                            
-                            st.markdown("---")
-                            st.success("🌟 **기억하세요**: 완벽한 계획보다 꾸준한 실행이 더 중요합니다. 나만의 속도로 차근차근 성장해나가세요!")
+                        }
+                        
+                        selected_plans = plans.get(user_goal, plans["어휘 다양성"])
+                        
+                        st.write(f"**🎯 선택한 개선 영역:** {user_goal}")
+                        st.write(f"**📊 현재 수준:** {user_level}")
+                        st.write(f"**⏰ 권장 학습 기간:** 4주")
+                        
+                        st.markdown("**📝 주간별 실행 계획:**")
+                        for i, plan in enumerate(selected_plans, 1):
+                            st.write(f"{i}주차: {plan}")
+                        
+                        # 추가 권장사항
+                        st.info(f"""
+                        **💡 {user_level} 수준 학습자를 위한 추가 팁:**
+                        - 매일 10분씩 꾸준히 연습하는 것이 집중적으로 몰아서 하는 것보다 효과적
+                        - 학습한 내용을 실제 글쓰기에 바로 적용해보기
+                        - 일주일에 한 번씩 진전 상황 스스로 점검하기
+                        """)
                     
                 else:
                     st.error("종합 글쓰기 진단에 필요한 데이터가 부족합니다.")
