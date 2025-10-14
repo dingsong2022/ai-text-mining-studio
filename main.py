@@ -2516,7 +2516,6 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                                 error_data.append({'오류 유형': korean_name, '개수': count})
 
                             if error_data:
-                                import plotly.graph_objects as go
                                 fig = go.Figure(data=[
                                     go.Bar(
                                         x=[d['오류 유형'] for d in error_data],
