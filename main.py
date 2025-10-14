@@ -2490,16 +2490,21 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                                 st.caption("🟠 개선 필요")
 
                         with col2:
-                            total_errors = grammar_analysis.get('total_errors', 0)
+                            # 총 오류 개수 계산
+                            error_count_by_type = grammar_analysis.get('error_count_by_type', {})
+                            sentences_with_issues = grammar_analysis.get('sentences_with_issues', [])
+                            total_errors = sum(error_count_by_type.values()) if error_count_by_type else len(sentences_with_issues)
                             st.metric("발견된 오류", f"{total_errors}개")
 
                         with col3:
-                            error_rate = grammar_analysis.get('error_rate', 0)
+                            # 오류율 계산
+                            total_sentences = grammar_analysis.get('total_sentences', 1)
+                            error_rate = (total_errors / total_sentences * 100) if total_sentences > 0 else 0
                             st.metric("오류율", f"{error_rate:.1f}%")
 
                         # 오류 유형별 분석
-                        error_patterns = grammar_analysis.get('error_patterns', {})
-                        if error_patterns and isinstance(error_patterns, dict):
+                        error_count_by_type = grammar_analysis.get('error_count_by_type', {})
+                        if error_count_by_type and isinstance(error_count_by_type, dict):
                             st.markdown("### 📊 오류 유형별 분석")
 
                             error_types_korean = {
@@ -2507,14 +2512,15 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                                 'article': '관사 오류',
                                 'agreement': '수일치 오류',
                                 'preposition': '전치사 오류',
-                                'spelling': '철자 오류'
+                                'spelling': '철자 오류',
+                                'structure': '문장 구조'
                             }
 
                             # 딕셔너리를 리스트로 변환
                             error_labels = []
                             error_counts = []
 
-                            for error_type, count in error_patterns.items():
+                            for error_type, count in error_count_by_type.items():
                                 korean_name = error_types_korean.get(error_type, error_type)
                                 error_labels.append(korean_name)
                                 error_counts.append(int(count) if isinstance(count, (int, float)) else 0)
@@ -2540,11 +2546,13 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                                 st.plotly_chart(fig, use_container_width=True)
 
                         # 개선 제안
-                        grammar_suggestions = grammar_analysis.get('improvement_suggestions', [])
-                        if grammar_suggestions:
+                        improvement_areas = grammar_analysis.get('improvement_areas', [])
+                        if improvement_areas and total_errors > 0:
                             st.markdown("### 💡 문법 개선 제안")
-                            for suggestion in grammar_suggestions[:3]:
-                                st.info(f"• {suggestion}")
+                            for area in improvement_areas[:3]:
+                                st.info(f"• {area}")
+                        elif total_errors == 0:
+                            st.success("💡 문법 오류가 발견되지 않았습니다. 우수한 문법 구사력입니다!")
                     else:
                         st.warning("통합 에세이 문법 분석 결과가 없습니다.")
 
