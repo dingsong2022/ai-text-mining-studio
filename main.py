@@ -2499,7 +2499,7 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
 
                         # 오류 유형별 분석
                         error_patterns = grammar_analysis.get('error_patterns', {})
-                        if error_patterns:
+                        if error_patterns and isinstance(error_patterns, dict):
                             st.markdown("### 📊 오류 유형별 분석")
 
                             error_types_korean = {
@@ -2510,18 +2510,22 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                                 'spelling': '철자 오류'
                             }
 
-                            error_data = []
+                            # 딕셔너리를 리스트로 변환
+                            error_labels = []
+                            error_counts = []
+
                             for error_type, count in error_patterns.items():
                                 korean_name = error_types_korean.get(error_type, error_type)
-                                error_data.append({'오류 유형': korean_name, '개수': count})
+                                error_labels.append(korean_name)
+                                error_counts.append(int(count) if isinstance(count, (int, float)) else 0)
 
-                            if error_data:
+                            if error_labels and error_counts:
                                 fig = go.Figure(data=[
                                     go.Bar(
-                                        x=[d['오류 유형'] for d in error_data],
-                                        y=[d['개수'] for d in error_data],
+                                        x=error_labels,
+                                        y=error_counts,
                                         marker_color='#FF6B6B',
-                                        text=[d['개수'] for d in error_data],
+                                        text=error_counts,
                                         textposition='auto'
                                     )
                                 ])
