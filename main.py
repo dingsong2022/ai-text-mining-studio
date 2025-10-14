@@ -2463,7 +2463,90 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                             """)
                     
                     st.markdown("---")
-                    
+
+                    # 4단계: 문법 오류 패턴 분석
+                    st.markdown("## ✏️ 4단계: 문법 오류 패턴 분석")
+                    st.markdown("""
+                    **🔍 원리 설명:**
+                    - **문법 정확도**: 시제, 관사, 수일치 등 기본 문법 규칙 준수 여부
+                    - **오류 패턴 분석**: 반복되는 문법 실수 유형 파악
+                    - **개선 가능성**: 교정 가능한 오류와 학습 포인트 제시
+                    """)
+
+                    # 학생 통합 에세이 문법 분석 결과
+                    st.markdown("### ✏️ 학생 통합 에세이 문법 분석 결과")
+                    grammar_analysis = result.get('step3_grammar', {})
+                    if grammar_analysis and 'grammar_score' in grammar_analysis:
+                        col1, col2, col3 = st.columns(3)
+
+                        with col1:
+                            grammar_score = grammar_analysis.get('grammar_score', 0)
+                            st.metric("문법 정확도", f"{grammar_score:.1f}/100")
+                            if grammar_score >= 85:
+                                st.caption("🟢 우수")
+                            elif grammar_score >= 70:
+                                st.caption("🟡 양호")
+                            else:
+                                st.caption("🟠 개선 필요")
+
+                        with col2:
+                            total_errors = grammar_analysis.get('total_errors', 0)
+                            st.metric("발견된 오류", f"{total_errors}개")
+
+                        with col3:
+                            error_rate = grammar_analysis.get('error_rate', 0)
+                            st.metric("오류율", f"{error_rate:.1f}%")
+
+                        # 오류 유형별 분석
+                        error_patterns = grammar_analysis.get('error_patterns', {})
+                        if error_patterns:
+                            st.markdown("### 📊 오류 유형별 분석")
+
+                            error_types_korean = {
+                                'tense': '시제 오류',
+                                'article': '관사 오류',
+                                'agreement': '수일치 오류',
+                                'preposition': '전치사 오류',
+                                'spelling': '철자 오류'
+                            }
+
+                            error_data = []
+                            for error_type, count in error_patterns.items():
+                                korean_name = error_types_korean.get(error_type, error_type)
+                                error_data.append({'오류 유형': korean_name, '개수': count})
+
+                            if error_data:
+                                import plotly.graph_objects as go
+                                fig = go.Figure(data=[
+                                    go.Bar(
+                                        x=[d['오류 유형'] for d in error_data],
+                                        y=[d['개수'] for d in error_data],
+                                        marker_color='#FF6B6B',
+                                        text=[d['개수'] for d in error_data],
+                                        textposition='auto'
+                                    )
+                                ])
+
+                                fig.update_layout(
+                                    title="문법 오류 유형별 분포",
+                                    xaxis_title="오류 유형",
+                                    yaxis_title="개수",
+                                    height=350
+                                )
+
+                                st.plotly_chart(fig, use_container_width=True)
+
+                        # 개선 제안
+                        grammar_suggestions = grammar_analysis.get('improvement_suggestions', [])
+                        if grammar_suggestions:
+                            st.markdown("### 💡 문법 개선 제안")
+                            for suggestion in grammar_suggestions[:3]:
+                                st.info(f"• {suggestion}")
+                    else:
+                        st.warning("통합 에세이 문법 분석 결과가 없습니다.")
+
+                    st.markdown("---")
+
                     # 종합 진단 결과
                     comprehensive_results = result.get('step5_comprehensive', {})
                     if comprehensive_results:
