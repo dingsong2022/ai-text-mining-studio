@@ -1703,10 +1703,10 @@ class TextPreprocessor:
             step5_result = self._comprehensive_assessment(text, step1_result, step2_result, step3_result, step4_result)
             
             return {
-                'step1_stats': step1_result,
+                'step1_statistical': step1_result,
                 'step2_vocabulary': step2_result,
                 'step3_grammar': step3_result,
-                'step4_similarity': step4_result,
+                'step3_similarity': step4_result,
                 'step5_comprehensive': step5_result,
                 'overall_score': step5_result['overall_score'],
                 'final_level': step5_result['final_level'],

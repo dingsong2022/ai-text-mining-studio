@@ -660,10 +660,10 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
     
     # 1. 감성 분석 탭
     with analysis_tabs[0]:
-        st.subheader("😊 감성 분석 3단계 원리 체험")
-        st.markdown("감성 분석의 3가지 접근법을 직접 체험하며 텍스트 마이닝의 원리를 이해해보세요.")
-        
-        if st.button("😊 3단계 감성 분석 원리 체험 시작", key="educational_sentiment"):
+        st.subheader("😊 감성 분석 4단계 원리 체험")
+        st.markdown("감성 분석의 4가지 접근법을 직접 체험하며 텍스트 마이닝의 원리를 이해해보세요.")
+
+        if st.button("😊 4단계 감성 분석 원리 체험 시작", key="educational_sentiment"):
             with st.spinner("감성 분석 원리를 단계별로 분석하는 중..."):
                 # 통합 텍스트로 교육적 감성 분석 실행
                 
@@ -675,7 +675,10 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                 
                 # 3단계: VADER
                 sentiment_method3 = preprocessor.educational_sentiment_analysis_step3_vader(all_essays_text)
-                
+
+                # 4단계: 8개 감정별 단어 분석
+                sentiment_method4 = preprocessor.enhanced_sentiment_analysis(all_essays_text)
+
                 sentiment_comparison_result = {
                     'essay_info': {
                         'topic': f"{username}님의 모든 에세이 통합 텍스트",
@@ -685,7 +688,8 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                     },
                     'method1_lexicon': sentiment_method1,
                     'method2_tfidf': sentiment_method2,
-                    'method3_vader': sentiment_method3
+                    'method3_vader': sentiment_method3,
+                    'method4_emotion': sentiment_method4
                 }
                 
                 if sentiment_comparison_result:
@@ -950,13 +954,100 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                         st.warning(method3.get('error', ''))
                     
                     st.markdown("""
-                    **✅ 장점:** 문맥 고려, 감정 강도 측정, 실시간 처리 가능  
+                    **✅ 장점:** 문맥 고려, 감정 강도 측정, 실시간 처리 가능
                     **❌ 한계:** 언어별 튜닝 필요, 도메인 특화 어려움
                     """)
-                    
+
+                    st.markdown("---")
+
+                    # 4단계: 8개 감정별 단어 분석
+                    method4 = sentiment_comparison_result.get('method4_emotion', {})
+
+                    st.markdown("## 🎨 4단계: 8개 감정별 단어 분석")
+                    st.markdown("""
+                    **🔍 원리 설명:**
+                    - **8가지 기본 감정** (기쁨, 분노, 슬픔, 두려움, 놀라움, 혐오, 신뢰, 기대)을 키워드 기반으로 분석
+                    - **감정별 단어 개수**를 계산하여 글의 감정 구성 파악
+                    - **주요 감정 결정** 및 전체적인 감정 색깔 이해
+                    """)
+
+                    if method4 and 'error' not in str(method4):
+                        emotion_scores = method4.get('emotion_scores', {})
+                        emotion_ratios = method4.get('emotion_ratios', {})
+                        primary_emotion = method4.get('primary_emotion', 'neutral')
+                        final_emotion = method4.get('final_emotion', 'neutral')
+                        total_emotion_words = method4.get('total_emotion_words', 0)
+
+                        col1, col2 = st.columns([1, 1])
+
+                        with col1:
+                            st.write("**감정별 단어 개수:**")
+                            emotion_korean = {
+                                'joy': '😊 기쁨', 'anger': '😠 분노', 'sadness': '😢 슬픔',
+                                'fear': '😰 두려움', 'surprise': '😲 놀라움', 'disgust': '🤢 혐오',
+                                'trust': '🤝 신뢰', 'anticipation': '🤗 기대'
+                            }
+
+                            for emotion, korean in emotion_korean.items():
+                                count = emotion_scores.get(emotion, 0)
+                                ratio = emotion_ratios.get(emotion, 0)
+                                st.write(f"• {korean}: {count}개 ({ratio:.1f}%)")
+
+                            st.metric("총 감정 단어 수", f"{total_emotion_words}개")
+
+                            primary_korean = emotion_korean.get(primary_emotion, '😐 중립')
+                            st.metric("주요 감정", primary_korean)
+
+                        with col2:
+                            # 8개 감정 분포 차트
+                            if total_emotion_words > 0:
+                                emotion_labels = ['기쁨', '분노', '슬픔', '두려움', '놀라움', '혐오', '신뢰', '기대']
+                                emotion_keys = ['joy', 'anger', 'sadness', 'fear', 'surprise', 'disgust', 'trust', 'anticipation']
+                                emotion_counts = [emotion_scores.get(key, 0) for key in emotion_keys]
+                                emotion_colors = ['#FFD700', '#FF4444', '#4169E1', '#8B008B', '#FF8C00', '#32CD32', '#20B2AA', '#FF69B4']
+
+                                fig = go.Figure(data=[
+                                    go.Bar(
+                                        x=emotion_labels,
+                                        y=emotion_counts,
+                                        marker_color=emotion_colors,
+                                        text=emotion_counts,
+                                        textposition='auto'
+                                    )
+                                ])
+
+                                fig.update_layout(
+                                    title="8개 감정별 단어 분포",
+                                    xaxis_title="감정 종류",
+                                    yaxis_title="단어 개수",
+                                    height=350
+                                )
+
+                                st.plotly_chart(fig, use_container_width=True)
+                            else:
+                                st.info("감정 단어가 발견되지 않았습니다.")
+
+                        # VADER와 결합된 최종 감정
+                        final_korean = {
+                            'joy': '기쁨', 'anger': '분노', 'sadness': '슬픔', 'fear': '두려움',
+                            'surprise': '놀라움', 'disgust': '혐오', 'trust': '신뢰', 'anticipation': '기대',
+                            'positive': '긍정적', 'negative': '부정적', 'neutral': '중립적'
+                        }
+
+                        st.write(f"**최종 감정 판정:** {final_korean.get(final_emotion, '중립적')}")
+                        st.write(f"**신뢰도:** {method4.get('confidence', '낮음')}")
+
+                    else:
+                        st.warning("8개 감정 분석 결과가 없습니다.")
+
+                    st.markdown("""
+                    **✅ 장점:** 세밀한 감정 분류, 감정 구성 파악, 직관적 이해
+                    **❌ 한계:** 키워드 의존성, 복합 감정 처리 제한
+                    """)
+
                     # 결과 비교 및 학습 정리
                     st.markdown("---")
-                    st.subheader("📊 3가지 감성 분석 방법 결과 비교")
+                    st.subheader("📊 4가지 감성 분석 방법 결과 비교")
                     
                     # 비교 테이블
                     comparison_data = []
@@ -989,31 +1080,48 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                             '처리 속도': '빠름',
                             '정확도': '매우 높음'
                         })
-                    
+
+                    if method4 and 'error' not in str(method4):
+                        final_emotion = method4.get('final_emotion', 'neutral')
+                        final_korean = {
+                            'joy': '기쁨', 'anger': '분노', 'sadness': '슬픔', 'fear': '두려움',
+                            'surprise': '놀라움', 'disgust': '혐오', 'trust': '신뢰', 'anticipation': '기대',
+                            'positive': '긍정적', 'negative': '부정적', 'neutral': '중립적'
+                        }
+                        comparison_data.append({
+                            '방법': '4. 8개 감정 분석',
+                            '감성 결과': final_korean.get(final_emotion, '중립적'),
+                            '점수/신뢰도': method4.get('confidence', '낮음'),
+                            '처리 속도': '빠름',
+                            '정확도': '높음'
+                        })
+
                     if comparison_data:
                         df_sentiment_comparison = pd.DataFrame(comparison_data)
                         st.table(df_sentiment_comparison)
-                    
+
                     # 학습 정리
                     st.subheader("🎓 감성 분석 학습 정리")
-                    
+
                     col1, col2 = st.columns(2)
-                    
+
                     with col1:
                         st.info("""
                         **🔍 배운 내용:**
                         - 어휘 사전 기반의 단순 합산 방식
                         - TF-IDF를 활용한 가중치 기반 분석
                         - VADER의 문맥 고려 고급 규칙
+                        - 8개 감정별 세밀한 감정 분류
                         - 각 방법론의 장단점과 적용 분야
                         """)
-                    
+
                     with col2:
                         st.success("""
                         **💡 실무 적용:**
                         - 빠른 분석: 어휘 사전 기반
                         - 정확한 분류: TF-IDF + 머신러닝
                         - 소셜미디어: VADER
+                        - 감정 세분화: 8개 감정 분석
                         - 종합 분석: 여러 방법 조합 활용
                         """)
                     
@@ -2172,7 +2280,7 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                     # 학생 통합 에세이 문장 유사도 분석 결과
                     st.markdown("### 🔗 학생 통합 에세이 문장 유사도 분석 결과")
                     similarity_analysis = result.get('step3_similarity', {})
-                    if similarity_analysis:
+                    if similarity_analysis and 'average_similarity' in similarity_analysis:
                         col1, col2, col3 = st.columns(3)
                         
                         with col1:
@@ -2357,7 +2465,7 @@ def show_comprehensive_analysis(essay_data, preprocessor, username):
                     st.markdown("---")
                     
                     # 종합 진단 결과
-                    comprehensive_results = result.get('step4_comprehensive', {})
+                    comprehensive_results = result.get('step5_comprehensive', {})
                     if comprehensive_results:
                         st.success("🎊 **종합 진단 완료!**")
                         
