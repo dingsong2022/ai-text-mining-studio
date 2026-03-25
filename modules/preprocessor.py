@@ -779,8 +779,14 @@ class TextPreprocessor:
             
             training_labels = [1, 0, 1, 0, 0.5, 0.5]  # 1=긍정, 0=부정, 0.5=중립
             
-            # TF-IDF 벡터화
-            vectorizer = TfidfVectorizer(max_features=100, stop_words='english')
+            # TF-IDF 벡터화 (개선된 파라미터)
+            vectorizer = TfidfVectorizer(
+                max_features=200,  # 더 많은 특성 추출
+                stop_words='english',
+                min_df=1,  # 최소 문서 빈도 (작은 데이터셋용)
+                ngram_range=(1, 2),  # unigram + bigram
+                sublinear_tf=True  # TF 스케일링 (로그 스케일)
+            )
             tfidf_matrix = vectorizer.fit_transform(training_texts)
             
             # 현재 텍스트의 TF-IDF 벡터
@@ -805,7 +811,11 @@ class TextPreprocessor:
                 'magnificent', 'beautiful', 'nice', 'fine', 'well', 'better', 'positive',
                 'successful', 'effective', 'efficient', 'helpful', 'useful', 'valuable',
                 'important', 'connect', 'friends', 'family', 'share', 'experiences',
-                'discover', 'information', 'ways', 'offer', 'platforms', 'trends'
+                'discover', 'information', 'ways', 'offer', 'platforms', 'trends',
+                'enjoy', 'benefits', 'advantage', 'advantages', 'improve', 'improved',
+                'interesting', 'easier', 'convenient', 'enhance', 'quality', 'support',
+                'appreciate', 'recommend', 'recommended', 'favorable', 'excellent',
+                'superior', 'remarkable', 'impressive', 'stunning', 'splendid'
             }
             negative_words = {
                 'bad', 'terrible', 'awful', 'hate', 'worst', 'horrible', 'disappointing',
@@ -813,14 +823,28 @@ class TextPreprocessor:
                 'annoyed', 'upset', 'worried', 'concerned', 'problem', 'issue', 'trouble',
                 'difficult', 'hard', 'poor', 'weak', 'fail', 'wrong', 'mistake', 'error',
                 'worse', 'negative', 'ineffective', 'useless', 'worthless', 'without',
-                'imagine', 'disadvantages'
+                'imagine', 'disadvantages', 'lacking', 'inferior', 'mediocre', 'inadequate',
+                'unsatisfactory', 'unacceptable', 'harmful', 'damaging', 'problematic',
+                'challenging', 'complicated', 'confusing', 'unreliable', 'unstable'
             }
             
             positive_score = sum(score for word, score in top_words if word in positive_words)
             negative_score = sum(score for word, score in top_words if word in negative_words)
-            
+
             final_score = positive_score - negative_score
-            
+
+            # 신뢰도 계산 (개선된 공식)
+            # TF-IDF 점수의 범위를 고려한 스케일링
+            total_tfidf_sum = sum(score for word, score in top_words)
+            if total_tfidf_sum > 0:
+                sentiment_ratio = abs(final_score) / total_tfidf_sum
+                confidence = min(sentiment_ratio * 100, 95)  # 최대 95%
+                # 최소 신뢰도 보정
+                if confidence < 15:
+                    confidence = max(confidence + 20, 35)
+            else:
+                confidence = 30  # 기본 신뢰도
+
             # 임계값 조정 - 더 민감하게
             if final_score > 0.05:  # 0.1 → 0.05로 낮춤
                 sentiment = "긍정"
@@ -837,6 +861,7 @@ class TextPreprocessor:
                 'final_score': final_score,
                 'sentiment': sentiment,
                 'emoji': emoji,
+                'confidence': confidence,  # 신뢰도 추가
                 'top_tfidf_words': top_words,
                 'positive_score': positive_score,
                 'negative_score': negative_score,
