@@ -80,12 +80,12 @@ def login_page():
         st.info("💡 **English Essay Writing Studio**에서 사용하던 계정으로 로그인하세요!")
 
     st.markdown("---")
-    with st.expander("📋 개인정보처리방침 (Voice Chat v2 / AI Text Mining Studio)"):
+    with st.expander("📋 개인정보처리방침 (AI Text Mining Studio)"):
         st.markdown("""
 **개인정보처리방침**
 시행일: 2026년 3월 24일 | 제작·운영: 송지은
 
-'Voice Chat v2'는 「개인정보 보호법」 및 관련 법령을 준수하며, 이용자의 개인정보를 안전하게 보호하기 위하여 다음과 같이 개인정보처리방침을 수립·공개합니다.
+'AI Text Mining Studio'는 「개인정보 보호법」 및 관련 법령을 준수하며, 이용자의 개인정보를 안전하게 보호하기 위하여 다음과 같이 개인정보처리방침을 수립·공개합니다.
 
 ---
 
